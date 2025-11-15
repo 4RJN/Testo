@@ -208,7 +208,7 @@
 <script>
 (() => {
   // ========= Einstellungen & Helpers =========
-  const DEFAULT_OFFSET_MS = 80;
+  const DEFAULT_OFFSET_MS = 120;
   const getOffset = () => +(localStorage.getItem("rt_offset_ms")||DEFAULT_OFFSET_MS);
   const vibrateShort = () => { if (navigator.vibrate) navigator.vibrate([15]); };
   const pad2 = n => String(n).padStart(2,'0');
