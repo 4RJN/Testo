@@ -208,7 +208,7 @@
 <script>
 (() => {
   // ========= Einstellungen & Helpers =========
-  const DEFAULT_OFFSET_MS = 120;
+  const DEFAULT_OFFSET_MS = 80; // dein Offset kann weiterhin via localStorage überschrieben werden
   const getOffset = () => +(localStorage.getItem("rt_offset_ms")||DEFAULT_OFFSET_MS);
   const vibrateShort = () => { if (navigator.vibrate) navigator.vibrate([15]); };
   const pad2 = n => String(n).padStart(2,'0');
@@ -224,16 +224,17 @@
   const dailyTableBody = document.querySelector('#daily-table tbody');
   const dailySection = document.getElementById('daily-section');
 
-  // ========= Evidence (Kamera + GPS, nur Client) =========
+  // ========= Evidence (Kamera + GPS) =========
   const Evidence = (() => {
     let stream = null, videoEl, canvasEl, ctx;
-    let lastGeo = { lat: null, lng: null, acc: null, ts: null };
+    let lastGeo = { lat: null, lng: null, acc: null, ts: null }; // wird bei Start gesetzt
 
     async function init() {
       videoEl = document.getElementById('frontcam');
       canvasEl = document.getElementById('shot');
       ctx = canvasEl.getContext('2d');
 
+      // Kamera anfordern (durch Nutzer-Geste erlaubt)
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
         videoEl.srcObject = stream;
@@ -242,6 +243,7 @@
         stream = null;
       }
 
+      // GPS EINMALIG erfassen (Session)
       try { await captureLocation(); } catch (_) {}
     }
 
@@ -258,13 +260,13 @@
             resolve(lastGeo);
           },
           err => reject(err),
-          { enableHighAccuracy: true, maximumAge: 15000, timeout: 8000 }
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
         );
       });
     }
 
-    async function getLocation({ refresh=false } = {}) {
-      if (refresh || !lastGeo.lat) { try { await captureLocation(); } catch (_) {} }
+    // Liefert den EINMALIGEN Session-Standort (kein Refresh bei Klicks)
+    async function getSessionLocation() {
       return {
         link: (lastGeo.lat ? `https://maps.google.com/?q=${lastGeo.lat},${lastGeo.lng}` : null),
         meta: lastGeo
@@ -282,7 +284,7 @@
       return { dataUrl, w, h, ts: new Date().toISOString() };
     }
 
-    return { init, stop, getLocation, snap };
+    return { init, stop, getSessionLocation, snap };
   })();
 
   // ========= State =========
@@ -300,10 +302,11 @@
   let sessionHits = 0;
   const MAX_HITS = 10;
 
-  // Session-Infos (für PDF ok, lokale Speicherung bleibt wie gehabt)
+  // Session-Infos
   let sessionId = null;
   let sessionStartedAt = null;
   let sessionFinishedAt = null;
+  let sessionLocation = null; // {link, meta} einmalig pro Session
 
   // ========= Persistenz =========
   const LS_KEY = 'rt_trials_v1';
@@ -371,45 +374,32 @@
     vibrateShort();
   }
 
+  // ZWEI-PHASEN-SPEICHERUNG:
+  // Phase A: sofort speichern (ohne Evidence), UI fortsetzen
+  // Phase B: asynchron Selfie + Session-GPS anhängen, genau diesen Trial updaten
   async function pushHit(rawMs){
     const adj = Math.max(0, Math.round(rawMs - getOffset()));
     const now = new Date();
 
-    // Evidence erfassen (Selfie + GPS-Link)
-    const [pic, loc] = await Promise.all([
-      Evidence.snap({ maxWidth: 640, quality: 0.8 }),
-      Evidence.getLocation({ refresh: false })
-    ]);
-
-    // Session-ID lazily setzen (falls Start nicht gedrückt? normal: beim Start gesetzt)
-    if (!sessionId) {
+    if (!sessionId) { // falls Start nicht gedrückt wurde (Sonderfall)
       sessionId = 's_' + Math.random().toString(36).slice(2,10);
       sessionStartedAt = now.toISOString();
+      try { await Evidence.init(); } catch {}
+      try { sessionLocation = await Evidence.getSessionLocation(); } catch {}
     }
 
-    const trial = {
-      tsISO: now.toISOString(),
+    // ----- Phase A: sofortiger Base-Eintrag (ohne Evidence) -----
+    const trialId = now.toISOString(); // eindeutiger Schlüssel
+    const baseTrial = {
+      tsISO: trialId,
       date: ymd(now),
       ms: adj,
       sessionId: sessionId || null,
-      evidence: {
-        location: {
-          lat: loc?.meta?.lat ?? null,
-          lng: loc?.meta?.lng ?? null,
-          acc: loc?.meta?.acc ?? null,
-          ts:  loc?.meta?.ts  ?? null,
-          link: loc?.link || null
-        },
-        selfie: {
-          ts: pic?.ts || null,
-          w:  pic?.w  || null,
-          h:  pic?.h  || null,
-          dataUrl: pic?.dataUrl || null
-        }
-      }
+      evidence: {} // wird später gefüllt
     };
-    saveTrial(trial);
+    saveTrial(baseTrial);
 
+    // UI/Feedback sofort
     history.unshift({ts: now.toLocaleString('de-DE'), type:'hit', ms: adj});
     if(history.length>10) history.pop();
     renderHistory();
@@ -423,6 +413,37 @@
     else startTest();
 
     updateDailyTable();
+
+    // ----- Phase B: asynchron Evidence erfassen & zu genau diesem Trial hinzufügen -----
+    queueMicrotask(async () => {
+      const [pic] = await Promise.all([
+        Evidence.snap({ maxWidth: 640, quality: 0.8 }),
+      ]);
+      // Session-GPS einmalig verwenden (falls vorhanden)
+      const loc = sessionLocation || (await Evidence.getSessionLocation().catch(()=>null)) || null;
+
+      // den passenden Trial anhand trialId (tsISO) finden und updaten
+      const trials = loadTrials();
+      const idx = trials.findIndex(t => t.tsISO === trialId);
+      if (idx >= 0) {
+        const t0 = trials[idx];
+        if (!t0.evidence) t0.evidence = {};
+        t0.evidence.location = loc ? {
+          lat:  loc.meta?.lat ?? null,
+          lng:  loc.meta?.lng ?? null,
+          acc:  loc.meta?.acc ?? null,
+          ts:   loc.meta?.ts  ?? null,
+          link: loc.link || null
+        } : null;
+        t0.evidence.selfie = {
+          ts: pic?.ts || null,
+          w:  pic?.w  || null,
+          h:  pic?.h  || null,
+          dataUrl: pic?.dataUrl || null
+        };
+        localStorage.setItem(LS_KEY, JSON.stringify(trials));
+      }
+    });
   }
 
   // ========= Robustes Timing =========
@@ -487,6 +508,9 @@
     sessionStartedAt = new Date().toISOString();
     sessionFinishedAt = null;
 
+    // GPS EINMALIG pro Session speichern
+    try { sessionLocation = await Evidence.getSessionLocation(); } catch { sessionLocation = null; }
+
     history.length = 0;
     renderHistory();
     resultEl.textContent = '';
@@ -509,7 +533,7 @@
       startTest();
     } else if(state==='ready'){
       const raw = performance.now()-startTime;
-      await pushHit(raw); // async wegen Evidence
+      await pushHit(raw); // async (Phase B läuft im Hintergrund)
     }
   }, {passive:true});
 
@@ -540,26 +564,27 @@
     }
   });
 
-  // ========= PDF Export (mit Selfie + klickbarem Kurzlink "(Ort)") =========
+  // ========= PDF Export (blauer, unterstrichener Link "(Ort)") =========
   pdfBtn.addEventListener('click', ()=>{
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
 
     const LEFT = 20;
-    const RIGHT = 190;  // rechte Seitenkante
-    const LINE = 6;     // Zeilenhöhe
-    const IMG_W = 28;   // Bildbreite mm (kleines Thumbnail)
-    const IMG_H = 21;   // Bildhöhe mm (ca. 4:3)
+    const RIGHT = 190;
+    const LINE = 6;
+    const IMG_W = 28;
+    const IMG_H = 21;
     const GAP = 2;
 
     let y = 18;
 
     // Titel
     doc.setFontSize(16);
+    doc.setTextColor(0,0,0);
     doc.text('Reaktionstest Ergebnisse', LEFT, y);
     y += 8;
 
-    // Session-Meta (falls gesetzt)
+    // Session-Meta
     doc.setFontSize(11);
     if (sessionId) {
       doc.text(`Session: ${sessionId}`, LEFT, y); y += LINE;
@@ -570,52 +595,63 @@
 
     // Letzte 10 Tests
     doc.setFontSize(12);
+    doc.setTextColor(0,0,0);
     doc.text('Letzte 10 Tests:', LEFT, y); y += LINE;
 
     const all = loadTrials();
     const recent = all.slice(0,10);
-
     doc.setFontSize(11);
 
     recent.forEach((t, i) => {
-      // Platz prüfen: Text + optional Link + optional Bild
       const needY = LINE + (t?.evidence?.location?.link ? LINE : 0) + (t?.evidence?.selfie?.dataUrl ? (IMG_H + GAP) : 0) + 2;
       if (y + needY > 285) { doc.addPage(); y = 15; }
 
-      // 1) Hauptzeile: Index, Zeitstempel, ms
       const ts = new Date(t.tsISO || Date.now()).toLocaleString('de-DE');
       const msText = (typeof t.ms === 'number') ? `${t.ms} ms` : '—';
+      doc.setTextColor(0,0,0);
       doc.text(`${i+1}. ${ts} – ${msText}`, LEFT, y);
       y += LINE;
 
-      // 2) Klickbarer Kurzlink "(Ort)" falls vorhanden
+      // Klickbarer Kurzlink "(Ort)" in BLAU + unterstrichen
       const link = t?.evidence?.location?.link;
       if (link) {
-        // "(Ort)" anklickbar
-        doc.textWithLink('(Ort)', LEFT + 6, y, { url: link });
+        const linkText = '(Ort)';
+        const x = LEFT + 6;
+        const yLink = y;
+
+        // Blau
+        doc.setTextColor(0, 102, 204);
+        // Klick-Annotation
+        doc.textWithLink(linkText, x, yLink, { url: link });
+        // Unterstreichung
+        const w = doc.getTextWidth(linkText);
+        doc.setDrawColor(0, 102, 204);
+        doc.line(x, yLink + 0.6, x + w, yLink + 0.6);
+
+        // Farbe zurücksetzen
+        doc.setTextColor(0,0,0);
         y += LINE;
       }
 
-      // 3) Kleines Selfie rechts vom Text, falls vorhanden
+      // Selfie rechts
       const imgData = t?.evidence?.selfie?.dataUrl;
       if (imgData) {
-        const xImg = RIGHT - IMG_W; // rechts ausrichten
+        const xImg = RIGHT - IMG_W;
         doc.addImage(imgData, 'JPEG', xImg, y, IMG_W, IMG_H);
-        // Kleines Label unter dem Bild
         doc.setFontSize(9);
         doc.text('Selfie', xImg, y + IMG_H + 4);
         doc.setFontSize(11);
         y += IMG_H + GAP;
       }
 
-      y += 2; // Abstand zum nächsten Eintrag
+      y += 2;
     });
 
-    // Seitenumbruchcheck
     if (y > 270) { doc.addPage(); y = 15; }
 
     // Tagesübersicht
     doc.setFontSize(12);
+    doc.setTextColor(0,0,0);
     doc.text('Tagesübersicht:', LEFT, y); y += LINE; doc.setFontSize(11);
 
     const byDate = new Map();
