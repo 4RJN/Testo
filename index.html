@@ -76,8 +76,8 @@
 
 <script>
 (() => {
-  // --- Mess-Offset fest im Code (nicht sichtbar) ---
-  const DEFAULT_OFFSET_MS = 120; // hier ggf. anpassen
+  // --- fester Mess-Offset ---
+  const DEFAULT_OFFSET_MS = 120; // hier anpassen, wenn gewünscht
   const getOffset = () => DEFAULT_OFFSET_MS;
 
   const vibrateShort = () => { if (navigator.vibrate) navigator.vibrate([15]); };
@@ -94,7 +94,7 @@
   const dailyTableBody = document.querySelector('#daily-table tbody');
   const dailySection = document.getElementById('daily-section');
 
-  // Kamera + einmaliges Session-GPS
+  // Evidence (Kamera + Session-GPS einmalig)
   const Evidence = (() => {
     let stream = null, videoEl, canvasEl, ctx;
     let lastGeo = { lat: null, lng: null, acc: null, ts: null };
@@ -125,10 +125,7 @@
       });
     }
     async function getSessionLocation() {
-      return {
-        link: (lastGeo.lat ? `https://maps.google.com/?q=${lastGeo.lat},${lastGeo.lng}` : null),
-        meta: lastGeo
-      };
+      return { link: (lastGeo.lat ? `https://maps.google.com/?q=${lastGeo.lat},${lastGeo.lng}` : null), meta: lastGeo };
     }
     async function snap({ maxWidth = 640, quality = 0.85 } = {}) {
       if (!has() || videoEl.videoWidth === 0) return { dataUrl: null, ts: new Date().toISOString(), w: 0, h: 0 };
@@ -150,14 +147,33 @@
   // Session
   let sessionId = null, sessionStartedAt = null, sessionFinishedAt = null, sessionLocation = null;
 
-  // Persistenz
+  // Persistenz (Trials + Tages-Snapshots)
   const LS_KEY = 'rt_trials_v1';
+  const LS_DAILY = 'rt_daily_snap_v1'; // <- NEU: unveränderliche Zeilen pro Test
   const loadTrials = () => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch { return []; } };
+  const loadDaily = () => { try { return JSON.parse(localStorage.getItem(LS_DAILY) || '[]'); } catch { return []; } };
   function saveTrial(t) {
     const arr = loadTrials();
     arr.unshift(t);
     if (arr.length > 1000) arr.pop();
     localStorage.setItem(LS_KEY, JSON.stringify(arr));
+  }
+  function appendDailySnap(snap) {
+    const arr = loadDaily();
+    arr.unshift(snap);
+    if (arr.length > 5000) arr.pop(); // großzügiges Limit
+    localStorage.setItem(LS_DAILY, JSON.stringify(arr));
+  }
+
+  // Tages-Snapshot zu JETZT berechnen (für den Tag der Messung)
+  function computeTodayStats(dateStr) {
+    const trialsToday = loadTrials().filter(t => t.date === dateStr && typeof t.ms === 'number');
+    if (!trialsToday.length) return { best: null, avg10: null };
+    const msList = trialsToday.map(t => t.ms);
+    const best = Math.min(...msList);
+    const last10 = trialsToday.slice(0, 10).map(t => t.ms);
+    const avg10 = Math.round(last10.reduce((s, x) => s + x, 0) / last10.length);
+    return { best, avg10 };
   }
 
   // UI
@@ -179,26 +195,16 @@
     });
   }
 
+  // *** NEU: Tagesübersicht rendert die unveränderlichen Snapshots ***
   function updateDailyTable() {
-    const t = loadTrials(), map = new Map();
-    for (const x of t) {
-      if (typeof x.ms !== 'number') continue;
-      const k = x.date || (x.tsISO ? (new Date(x.tsISO)).toISOString().slice(0, 10) : null);
-      if (!k) continue;
-      if (!map.has(k)) map.set(k, []);
-      map.get(k).push(x.ms);
-    }
-    const rows = Array.from(map.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
+    const snaps = loadDaily(); // jede Messung = eigene Zeile, nie geändert
     dailyTableBody.innerHTML = '';
-    for (const [d, list] of rows) {
-      const best = Math.min(...list);
-      const last10 = list.slice(0, 10);
-      const avg = Math.round(last10.reduce((s, x) => s + x, 0) / last10.length);
+    snaps.forEach(s => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${d}</td><td>${best}</td><td>${avg}</td>`;
+      tr.innerHTML = `<td>${s.date}</td><td>${s.best ?? '—'}</td><td>${s.avg10 ?? '—'}</td>`;
       dailyTableBody.appendChild(tr);
-    }
-    dailySection.style.display = rows.length ? 'block' : 'none';
+    });
+    dailySection.style.display = snaps.length ? 'block' : 'none';
   }
 
   function pushEarly(msg = 'Zu früh!') {
@@ -221,16 +227,22 @@
       try { sessionLocation = await Evidence.getSessionLocation(); } catch { sessionLocation = null; }
     }
 
-    // Phase A: sofort sichern (ohne Evidence)
     const trialId = now.toISOString();
-    const baseTrial = {
-      tsISO: trialId,
-      date: ymd(now),
-      ms: adj,
-      sessionId,
-      evidence: {}
-    };
+    const dateStr = ymd(now);
+
+    // Phase A: Trial sofort sichern (ohne Evidence)
+    const baseTrial = { tsISO: trialId, date: dateStr, ms: adj, sessionId, evidence: {} };
     saveTrial(baseTrial);
+
+    // *** WICHTIG: Tages-SNAPSHOT jetzt erstellen und DAUERHAFT speichern ***
+    const { best, avg10 } = computeTodayStats(dateStr);
+    appendDailySnap({
+      id: trialId,                  // Referenz auf die Messung
+      tsISO: trialId,               // Zeitpunkt der Messung
+      date: dateStr,                // Datumsspalte bleibt wie gewünscht
+      best,                         // Best-Wert des Tages zum Zeitpunkt der Messung
+      avg10                         // Ø der letzten 10 (zum Zeitpunkt der Messung)
+    });
 
     // UI sofort
     history.unshift({ ts: now.toLocaleString('de-DE'), type: 'hit', ms: adj });
@@ -241,11 +253,12 @@
 
     sessionHits++;
     setProgress(sessionHits);
-    if (sessionHits >= MAX_HITS) finishSession(); else startTest();
+    if (sessionHits >= 10) finishSession(); else startTest();
 
-    updateDailyTable(); // direkt nach Phase A
+    // Tabelle SOFORT mit der neuen (unveränderlichen) Zeile erweitern
+    updateDailyTable();
 
-    // Phase B: Evidence async anhängen
+    // Phase B: Evidence async anhängen (ändert Tages-Snapshot NICHT)
     queueMicrotask(async () => {
       const pic = await Evidence.snap({ maxWidth: 640, quality: 0.8 });
       const loc = sessionLocation || (await Evidence.getSessionLocation().catch(() => null)) || null;
@@ -262,13 +275,11 @@
           link: loc.link || null
         } : null;
         t0.evidence.selfie = {
-          ts: pic?.ts || null,
-          w:  pic?.w  || null,
-          h:  pic?.h  || null,
-          dataUrl: pic?.dataUrl || null
+          ts: pic?.ts || null, w: pic?.w || null, h: pic?.h || null, dataUrl: pic?.dataUrl || null
         };
         localStorage.setItem(LS_KEY, JSON.stringify(arr));
-        updateDailyTable(); // Refresh nach Phase B
+        // KEIN Update der Tages-Snapshots – die bleiben unverändert
+        updateDailyTable(); // nur Re-Render (zeigt dieselben Zeilen)
       }
     });
   }
@@ -288,10 +299,7 @@
         state = 'ready';
         setGreen();
         startTime = performance.now();
-        if (holding) {
-          pushEarly('Zu früh (gedrückt gehalten).');
-          startTest();
-        }
+        if (holding) { pushEarly('Zu früh (gedrückt gehalten).'); startTest(); }
       });
     }, toGo);
   }
@@ -327,16 +335,13 @@
     sessionFinishedAt = null;
     try { sessionLocation = await Evidence.getSessionLocation(); } catch { sessionLocation = null; }
 
-    history.length = 0;
-    renderHistory();
+    history.length = 0; renderHistory();
     resultEl.textContent = '';
     btn.style.display = 'block';
     sessionCtrl.style.display = 'none';
     pdfBtn.style.display = 'none';
-    sessionHits = 0;
-    setProgress(0);
-    state = 'idle';
-    holding = false;
+    sessionHits = 0; setProgress(0);
+    state = 'idle'; holding = false;
     startTest();
     updateDailyTable();
   }
@@ -345,41 +350,13 @@
   btn.addEventListener('pointerdown', async () => {
     if (state === 'finished') return;
     holding = true;
-    if (state === 'waiting') {
-      pushEarly();
-      startTest();
-    } else if (state === 'ready') {
-      await pushHit(performance.now() - startTime);
-    }
+    if (state === 'waiting') { pushEarly(); startTest(); }
+    else if (state === 'ready') { await pushHit(performance.now() - startTime); }
   }, { passive: true });
-
-  ['pointerup','pointercancel','pointerleave'].forEach(ev => {
-    btn.addEventListener(ev, () => { holding = false; }, { passive: true });
-  });
-
+  ['pointerup','pointercancel','pointerleave'].forEach(ev => btn.addEventListener(ev, () => { holding = false; }, { passive: true }));
   sessionCtrl.addEventListener('click', startSession);
 
-  document.addEventListener('visibilitychange', () => {
-    clearTimeout(scheduled);
-    if (document.hidden) {
-      if (state === 'waiting' || state === 'ready') {
-        state = 'idle';
-        setRed();
-        resultEl.textContent = 'Pausiert (Tab nicht sichtbar).';
-      }
-    } else {
-      if (state !== 'finished' && sessionCtrl.style.display === 'none') {
-        state = 'waiting';
-        setRed();
-        // readyAt wird neu gesetzt, um Fairness zu wahren
-        const delay = 2000 + Math.random() * 3000;
-        readyAt = performance.now() + delay;
-        armTimer(trialToken);
-      }
-    }
-  });
-
-  // PDF mit Selfie + blau/unterstrichenem „(Ort)“
+  // PDF (Selfie + blauer/unterstrichener "(Ort)"-Link)
   pdfBtn.addEventListener('click', () => {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -388,8 +365,7 @@
     const IMG_W = 28, IMG_H = 21, GAP = 2;
     let y = 18;
 
-    doc.setFontSize(16);
-    doc.setTextColor(0,0,0);
+    doc.setFontSize(16); doc.setTextColor(0,0,0);
     doc.text('Reaktionstest Ergebnisse', LEFT, y); y += 8;
 
     doc.setFontSize(11);
@@ -403,8 +379,8 @@
     doc.setFontSize(12);
     doc.text('Letzte 10 Tests:', LEFT, y); y += LINE;
 
-    const all = loadTrials();
-    const recent = all.slice(0, 10);
+    const trials = loadTrials();
+    const recent = trials.slice(0, 10);
     doc.setFontSize(11);
 
     recent.forEach((t, i) => {
@@ -415,19 +391,15 @@
       const ts = new Date(t.tsISO || Date.now()).toLocaleString('de-DE');
       const msText = (typeof t.ms === 'number') ? `${t.ms} ms` : '—';
       doc.setTextColor(0,0,0);
-      doc.text(`${i+1}. ${ts} – ${msText}`, LEFT, y);
-      y += LINE;
+      doc.text(`${i+1}. ${ts} – ${msText}`, LEFT, y); y += LINE;
 
       const link = t?.evidence?.location?.link;
       if (link) {
-        const linkText = '(Ort)';
-        const x = LEFT + 6;
-        const yLink = y;
-
-        doc.setTextColor(0, 102, 204);
+        const linkText = '(Ort)'; const x = LEFT + 6; const yLink = y;
+        doc.setTextColor(0,102,204);
         doc.textWithLink(linkText, x, yLink, { url: link });
         const w = doc.getTextWidth(linkText);
-        doc.setDrawColor(0, 102, 204);
+        doc.setDrawColor(0,102,204);
         doc.line(x, yLink + 0.6, x + w, yLink + 0.6);
         doc.setTextColor(0,0,0);
         y += LINE;
@@ -448,23 +420,14 @@
 
     if (y > 270) { doc.addPage(); y = 15; }
 
-    doc.setFontSize(12);
-    doc.setTextColor(0,0,0);
+    doc.setFontSize(12); doc.setTextColor(0,0,0);
     doc.text('Tagesübersicht:', LEFT, y); y += LINE; doc.setFontSize(11);
 
-    const byDate = new Map();
-    for (const t of all) {
-      if (typeof t.ms !== 'number') continue;
-      const k = t.date || (t.tsISO ? (new Date(t.tsISO)).toISOString().slice(0,10) : null);
-      if (!k) continue;
-      (byDate.get(k) || byDate.set(k, []).get(k)).push(t.ms);
-    }
-    const rows = Array.from(byDate.entries()).sort((a,b)=>(a[0] < b[0] ? 1 : -1)).slice(0, 20);
-    rows.forEach(([date, list]) => {
-      const best = Math.min(...list);
-      const avg10 = Math.round(list.slice(0,10).reduce((s,x)=>s+x,0)/Math.min(10, list.length));
+    // Für das PDF nehmen wir die selben Snapshots (unveränderliche Liste)
+    const snaps = loadDaily().slice(0, 20);
+    snaps.forEach(s => {
       if (y + LINE > 290) { doc.addPage(); y = 15; }
-      doc.text(`${date}: Best ${best} ms | Ø10 ${avg10} ms`, LEFT, y);
+      doc.text(`${s.date}: Best ${s.best ?? '—'} ms | Ø10 ${s.avg10 ?? '—'} ms`, LEFT, y);
       y += LINE;
     });
 
@@ -472,7 +435,7 @@
   });
 
   // Init
-  updateDailyTable(); // zeigt Tabelle, falls Daten vorhanden
+  updateDailyTable();
   // Start per Button
 })();
 </script>
