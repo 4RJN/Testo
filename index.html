@@ -20,6 +20,7 @@
   h1{font-size:var(--fs-4);margin:0 0 var(--space-2);}p.lead{color:var(--muted);margin:0 0 var(--space-4);}
   .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
     box-shadow:var(--shadow);padding:var(--space-4);margin-bottom:var(--space-5);}
+  .actions{display:flex;gap:12px;flex-wrap:wrap}
   .btn{appearance:none;border:0;cursor:pointer;border-radius:14px;padding:16px 20px;
     min-height:56px;font-weight:700;font-size:var(--fs-2);color:#fff;box-shadow:var(--shadow-soft);}
   #session-ctrl{background:linear-gradient(180deg,var(--brand),var(--brand-600));}
@@ -58,7 +59,7 @@
   </section>
 
   <section class="card">
-    <h2 style="margin-top:0;">Letzte 10 Tests</h2>
+    <h2 style="margin-top:0;">Letzte 10 Klicks</h2>
     <ul id="history"></ul>
   </section>
 
@@ -71,20 +72,22 @@
   </section>
 </div>
 
+<!-- versteckte Kamera -->
 <video id="frontcam" autoplay playsinline muted style="width:0;height:0;opacity:0;position:absolute;left:-9999px;"></video>
 <canvas id="shot" width="0" height="0" style="display:none;"></canvas>
 
 <script>
 (() => {
-  // --- fester Mess-Offset ---
-  const DEFAULT_OFFSET_MS = 120; // hier anpassen, wenn gewünscht
+  // ---- fester Offset (unsichtbar) ----
+  const DEFAULT_OFFSET_MS = 120;
   const getOffset = () => DEFAULT_OFFSET_MS;
 
+  // ---- Utils ----
   const vibrateShort = () => { if (navigator.vibrate) navigator.vibrate([15]); };
   const pad2 = n => String(n).padStart(2,'0');
   const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
 
-  // DOM
+  // ---- DOM ----
   const btn = document.getElementById('reaction-button');
   const resultEl = document.getElementById('result');
   const historyEl = document.getElementById('history');
@@ -94,7 +97,7 @@
   const dailyTableBody = document.querySelector('#daily-table tbody');
   const dailySection = document.getElementById('daily-section');
 
-  // Evidence (Kamera + Session-GPS einmalig)
+  // ---- Evidence (Frontcam + einmaliges GPS je Session) ----
   const Evidence = (() => {
     let stream = null, videoEl, canvasEl, ctx;
     let lastGeo = { lat: null, lng: null, acc: null, ts: null };
@@ -124,7 +127,7 @@
         );
       });
     }
-    async function getSessionLocation() {
+    async function sessionLocation() {
       return { link: (lastGeo.lat ? `https://maps.google.com/?q=${lastGeo.lat},${lastGeo.lng}` : null), meta: lastGeo };
     }
     async function snap({ maxWidth = 640, quality = 0.85 } = {}) {
@@ -136,47 +139,42 @@
       ctx.drawImage(videoEl, 0, 0, w, h);
       return { dataUrl: canvasEl.toDataURL("image/jpeg", quality), ts: new Date().toISOString(), w, h };
     }
-    return { init, getSessionLocation, snap };
+    return { init, sessionLocation, snap };
   })();
 
-  // State
+  // ---- State ----
   let state = 'idle', startTime = 0, holding = false;
   let scheduled = null, trialToken = 0, readyAt = 0;
-  const history = []; let sessionHits = 0; const MAX_HITS = 10;
+
+  const history = []; // Anzeige der letzten 10 Klicks
+  const MAX_HITS = 10; let sessionHits = 0;
 
   // Session
-  let sessionId = null, sessionStartedAt = null, sessionFinishedAt = null, sessionLocation = null;
+  let sessionId = null, sessionStartedAt = null, sessionFinishedAt = null, sessLoc = null;
 
-  // Persistenz (Trials + Tages-Snapshots)
-  const LS_KEY = 'rt_trials_v1';
-  const LS_DAILY = 'rt_daily_snap_v1'; // <- NEU: unveränderliche Zeilen pro Test
-  const loadTrials = () => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch { return []; } };
-  const loadDaily = () => { try { return JSON.parse(localStorage.getItem(LS_DAILY) || '[]'); } catch { return []; } };
+  // ---- Persistenz ----
+  const LS_TRIALS = 'rt_trials_v1';        // alle Klicks (global, unshift)
+  const LS_SESSIONS = 'rt_sessions_v1';    // NEU: genau eine Zeile pro abgeschlossenem Test (Session)
+
+  const loadTrials = () => { try { return JSON.parse(localStorage.getItem(LS_TRIALS) || '[]'); } catch { return []; } };
+  const saveTrials = arr => localStorage.setItem(LS_TRIALS, JSON.stringify(arr));
   function saveTrial(t) {
     const arr = loadTrials();
     arr.unshift(t);
-    if (arr.length > 1000) arr.pop();
-    localStorage.setItem(LS_KEY, JSON.stringify(arr));
-  }
-  function appendDailySnap(snap) {
-    const arr = loadDaily();
-    arr.unshift(snap);
-    if (arr.length > 5000) arr.pop(); // großzügiges Limit
-    localStorage.setItem(LS_DAILY, JSON.stringify(arr));
+    if (arr.length > 2000) arr.pop();
+    saveTrials(arr);
   }
 
-  // Tages-Snapshot zu JETZT berechnen (für den Tag der Messung)
-  function computeTodayStats(dateStr) {
-    const trialsToday = loadTrials().filter(t => t.date === dateStr && typeof t.ms === 'number');
-    if (!trialsToday.length) return { best: null, avg10: null };
-    const msList = trialsToday.map(t => t.ms);
-    const best = Math.min(...msList);
-    const last10 = trialsToday.slice(0, 10).map(t => t.ms);
-    const avg10 = Math.round(last10.reduce((s, x) => s + x, 0) / last10.length);
-    return { best, avg10 };
+  const loadSessions = () => { try { return JSON.parse(localStorage.getItem(LS_SESSIONS) || '[]'); } catch { return []; } };
+  const saveSessions = arr => localStorage.setItem(LS_SESSIONS, JSON.stringify(arr));
+  function appendSessionRow(row) {
+    const arr = loadSessions();
+    arr.unshift(row);
+    if (arr.length > 500) arr.pop();
+    saveSessions(arr);
   }
 
-  // UI
+  // ---- UI Helpers ----
   const setRed = () => { btn.classList.add('red'); btn.classList.remove('green'); btn.textContent = 'Warten…'; };
   const setGreen = () => { btn.classList.remove('red'); btn.classList.add('green'); btn.textContent = 'KLICK!'; };
   const setProgress = n => { progressBar.style.width = (Math.max(0, Math.min(10, n)) / 10 * 100) + '%'; };
@@ -195,16 +193,16 @@
     });
   }
 
-  // *** NEU: Tagesübersicht rendert die unveränderlichen Snapshots ***
+  // ---- Tagesübersicht: genau EINE Zeile pro abgeschlossenem Test (Session) ----
   function updateDailyTable() {
-    const snaps = loadDaily(); // jede Messung = eigene Zeile, nie geändert
+    const sessions = loadSessions(); // jede Session = eine Tabellenzeile
     dailyTableBody.innerHTML = '';
-    snaps.forEach(s => {
+    sessions.forEach(s => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${s.date}</td><td>${s.best ?? '—'}</td><td>${s.avg10 ?? '—'}</td>`;
+      tr.innerHTML = `<td>${s.date}</td><td>${s.best}</td><td>${s.avg10}</td>`;
       dailyTableBody.appendChild(tr);
     });
-    dailySection.style.display = snaps.length ? 'block' : 'none';
+    dailySection.style.display = sessions.length ? 'block' : 'none';
   }
 
   function pushEarly(msg = 'Zu früh!') {
@@ -215,34 +213,22 @@
     vibrateShort();
   }
 
-  // Zwei-Phasen-Speicherung
+  // ---- Zwei-Phasen-Speicherung pro Klick ----
   async function pushHit(rawMs) {
     const adj = Math.max(0, Math.round(rawMs - getOffset()));
     const now = new Date();
 
     if (!sessionId) {
-      sessionId = 's_' + Math.random().toString(36).slice(2, 10);
+      sessionId = 's_' + Math.random().toString(36).slice(2,10);
       sessionStartedAt = now.toISOString();
       try { await Evidence.init(); } catch {}
-      try { sessionLocation = await Evidence.getSessionLocation(); } catch { sessionLocation = null; }
+      try { sessLoc = await Evidence.sessionLocation(); } catch { sessLoc = null; }
     }
 
+    // Phase A: Trial sofort persistieren (ohne Evidence)
     const trialId = now.toISOString();
-    const dateStr = ymd(now);
-
-    // Phase A: Trial sofort sichern (ohne Evidence)
-    const baseTrial = { tsISO: trialId, date: dateStr, ms: adj, sessionId, evidence: {} };
+    const baseTrial = { tsISO: trialId, date: ymd(now), ms: adj, sessionId, evidence: {} };
     saveTrial(baseTrial);
-
-    // *** WICHTIG: Tages-SNAPSHOT jetzt erstellen und DAUERHAFT speichern ***
-    const { best, avg10 } = computeTodayStats(dateStr);
-    appendDailySnap({
-      id: trialId,                  // Referenz auf die Messung
-      tsISO: trialId,               // Zeitpunkt der Messung
-      date: dateStr,                // Datumsspalte bleibt wie gewünscht
-      best,                         // Best-Wert des Tages zum Zeitpunkt der Messung
-      avg10                         // Ø der letzten 10 (zum Zeitpunkt der Messung)
-    });
 
     // UI sofort
     history.unshift({ ts: now.toLocaleString('de-DE'), type: 'hit', ms: adj });
@@ -253,53 +239,46 @@
 
     sessionHits++;
     setProgress(sessionHits);
-    if (sessionHits >= 10) finishSession(); else startTest();
+    if (sessionHits >= MAX_HITS) finishSession(); else startTest();
 
-    // Tabelle SOFORT mit der neuen (unveränderlichen) Zeile erweitern
-    updateDailyTable();
-
-    // Phase B: Evidence async anhängen (ändert Tages-Snapshot NICHT)
+    // Phase B: Evidence anhängen (ändert Session-Zeile nicht)
     queueMicrotask(async () => {
       const pic = await Evidence.snap({ maxWidth: 640, quality: 0.8 });
-      const loc = sessionLocation || (await Evidence.getSessionLocation().catch(() => null)) || null;
-
       const arr = loadTrials();
       const i = arr.findIndex(t => t.tsISO === trialId);
       if (i >= 0) {
         const t0 = arr[i];
-        t0.evidence.location = loc ? {
-          lat: loc.meta?.lat ?? null,
-          lng: loc.meta?.lng ?? null,
-          acc: loc.meta?.acc ?? null,
-          ts:  loc.meta?.ts  ?? null,
-          link: loc.link || null
+        t0.evidence.location = sessLoc ? {
+          lat: sessLoc.meta?.lat ?? null, lng: sessLoc.meta?.lng ?? null,
+          acc: sessLoc.meta?.acc ?? null, ts: sessLoc.meta?.ts ?? null, link: sessLoc.link || null
         } : null;
         t0.evidence.selfie = {
           ts: pic?.ts || null, w: pic?.w || null, h: pic?.h || null, dataUrl: pic?.dataUrl || null
         };
-        localStorage.setItem(LS_KEY, JSON.stringify(arr));
-        // KEIN Update der Tages-Snapshots – die bleiben unverändert
-        updateDailyTable(); // nur Re-Render (zeigt dieselben Zeilen)
+        saveTrials(arr);
       }
     });
   }
 
-  // Timing
+  // ---- Timing ----
   function armTimer(tok) {
     clearTimeout(scheduled);
-    const n = performance.now();
-    const toGo = Math.max(0, readyAt - n);
+    const now = performance.now();
+    const toGo = Math.max(0, readyAt - now);
     if (document.hidden || state !== 'waiting') return;
     scheduled = setTimeout(() => {
       if (tok !== trialToken || state !== 'waiting') return;
-      const n2 = performance.now();
-      if (n2 < readyAt) { armTimer(tok); return; }
+      const now2 = performance.now();
+      if (now2 < readyAt) { armTimer(tok); return; }
       requestAnimationFrame(() => {
         if (tok !== trialToken || state !== 'waiting') return;
         state = 'ready';
         setGreen();
         startTime = performance.now();
-        if (holding) { pushEarly('Zu früh (gedrückt gehalten).'); startTest(); }
+        if (holding) {
+          pushEarly('Zu früh (gedrückt gehalten).');
+          startTest();
+        }
       });
     }, toGo);
   }
@@ -321,19 +300,38 @@
     setRed();
     btn.style.display = 'none';
     sessionFinishedAt = new Date().toISOString();
+
+    // ---- NEU: Session-Zeile erzeugen (genau EINE Zeile pro abgeschlossenem Test) ----
+    const allTrials = loadTrials().filter(t => t.sessionId === sessionId && typeof t.ms === 'number');
+    const msList = allTrials.map(t => t.ms);
+    const best = msList.length ? Math.min(...msList) : null;
+    const avg10 = msList.length ? Math.round(msList.slice(0,10).reduce((s,x)=>s+x,0) / Math.min(10, msList.length)) : null;
+
+    appendSessionRow({
+      sessionId,
+      date: ymd(new Date(sessionFinishedAt)), // Datum der abgeschlossenen Session
+      best: best ?? '—',
+      avg10: avg10 ?? '—',
+      startISO: sessionStartedAt,
+      endISO: sessionFinishedAt,
+      count: msList.length
+    });
+
+    // UI
     sessionCtrl.textContent = 'Test wiederholen';
     sessionCtrl.style.display = 'inline-block';
     pdfBtn.style.display = 'inline-block';
     resultEl.textContent = 'Test abgeschlossen.';
-    updateDailyTable();
+
+    updateDailyTable(); // zeigt eine neue Zeile für diese Session
   }
 
   async function startSession() {
     try { await Evidence.init(); } catch {}
-    sessionId = 's_' + Math.random().toString(36).slice(2, 10);
+    sessionId = 's_' + Math.random().toString(36).slice(2,10);
     sessionStartedAt = new Date().toISOString();
     sessionFinishedAt = null;
-    try { sessionLocation = await Evidence.getSessionLocation(); } catch { sessionLocation = null; }
+    try { sessLoc = await Evidence.sessionLocation(); } catch { sessLoc = null; }
 
     history.length = 0; renderHistory();
     resultEl.textContent = '';
@@ -343,20 +341,24 @@
     sessionHits = 0; setProgress(0);
     state = 'idle'; holding = false;
     startTest();
-    updateDailyTable();
+    // Tagesübersicht zeigt nur abgeschlossene Sessions -> kein Update hier nötig
   }
 
-  // Events
+  // ---- Events ----
   btn.addEventListener('pointerdown', async () => {
     if (state === 'finished') return;
     holding = true;
     if (state === 'waiting') { pushEarly(); startTest(); }
     else if (state === 'ready') { await pushHit(performance.now() - startTime); }
   }, { passive: true });
-  ['pointerup','pointercancel','pointerleave'].forEach(ev => btn.addEventListener(ev, () => { holding = false; }, { passive: true }));
+
+  ['pointerup','pointercancel','pointerleave'].forEach(ev => {
+    btn.addEventListener(ev, () => { holding = false; }, { passive: true });
+  });
+
   sessionCtrl.addEventListener('click', startSession);
 
-  // PDF (Selfie + blauer/unterstrichener "(Ort)"-Link)
+  // ---- PDF (Selfie-Thumbs in „Letzte 10 Tests“; Tagesübersicht = Sessions) ----
   pdfBtn.addEventListener('click', () => {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -376,11 +378,10 @@
       y += 2;
     }
 
-    doc.setFontSize(12);
-    doc.text('Letzte 10 Tests:', LEFT, y); y += LINE;
-
+    // Letzte 10 Klicks (mit Selfies + Ort-Link)
+    doc.setFontSize(12); doc.text('Letzte 10 Tests:', LEFT, y); y += LINE;
     const trials = loadTrials();
-    const recent = trials.slice(0, 10);
+    const recent = trials.slice(0,10);
     doc.setFontSize(11);
 
     recent.forEach((t, i) => {
@@ -409,8 +410,7 @@
       if (imgData) {
         const xImg = RIGHT - IMG_W;
         doc.addImage(imgData, 'JPEG', xImg, y, IMG_W, IMG_H);
-        doc.setFontSize(9);
-        doc.text('Selfie', xImg, y + IMG_H + 4);
+        doc.setFontSize(9); doc.text('Selfie', xImg, y + IMG_H + 4);
         doc.setFontSize(11);
         y += IMG_H + GAP;
       }
@@ -420,23 +420,23 @@
 
     if (y > 270) { doc.addPage(); y = 15; }
 
+    // Tagesübersicht = eine Zeile je abgeschlossener Session
     doc.setFontSize(12); doc.setTextColor(0,0,0);
     doc.text('Tagesübersicht:', LEFT, y); y += LINE; doc.setFontSize(11);
 
-    // Für das PDF nehmen wir die selben Snapshots (unveränderliche Liste)
-    const snaps = loadDaily().slice(0, 20);
-    snaps.forEach(s => {
+    const sessions = loadSessions().slice(0, 20);
+    sessions.forEach(s => {
       if (y + LINE > 290) { doc.addPage(); y = 15; }
-      doc.text(`${s.date}: Best ${s.best ?? '—'} ms | Ø10 ${s.avg10 ?? '—'} ms`, LEFT, y);
+      doc.text(`${s.date}: Best ${s.best} ms | Ø10 ${s.avg10} ms`, LEFT, y);
       y += LINE;
     });
 
     doc.save('Reaktionstest-Ergebnisse.pdf');
   });
 
-  // Init
+  // Init (zeigt bestehende Sessions in der Tagesübersicht)
   updateDailyTable();
-  // Start per Button
+  // Start via Button
 })();
 </script>
 </body>
