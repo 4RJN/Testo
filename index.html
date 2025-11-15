@@ -4,217 +4,87 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <title>Reaktionstest</title>
-<!-- jsPDF für PDF-Export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
-  /* ========== Design Tokens (mobile-first) ========== */
   :root{
-    --bg: #0f1115;
-    --card: #151923;
-    --muted: #9aa3b2;
-    --text: #e8ecf1;
-    --border: #272e3b;
-
-    --brand: #4f83ff;
-    --brand-600: #2f6bff;
-    --green: #29c76f;
-    --green-700: #1e9c56;
-    --red: #ff4d4f;
-    --red-700:#d83a3c;
-
-    --radius: 16px;
-    --shadow: 0 8px 24px rgba(0,0,0,.25);
-    --shadow-soft: 0 6px 16px rgba(0,0,0,.18);
-
-    --space-1: .5rem;
-    --space-2: .75rem;
-    --space-3: 1rem;
-    --space-4: 1.25rem;
-    --space-5: 1.75rem;
-    --space-6: 2rem;
-
-    --fs-1: clamp(14px, 3.2vw, 16px);
-    --fs-2: clamp(16px, 4vw, 18px);
-    --fs-3: clamp(18px, 5vw, 22px);
-    --fs-4: clamp(20px, 6vw, 26px);
+    --bg:#0f1115;--card:#151923;--muted:#9aa3b2;--text:#e8ecf1;--border:#272e3b;
+    --brand:#4f83ff;--brand-600:#2f6bff;--green:#29c76f;--green-700:#1e9c56;
+    --red:#ff4d4f;--red-700:#d83a3c;--radius:16px;
+    --shadow:0 8px 24px rgba(0,0,0,.25);--shadow-soft:0 6px 16px rgba(0,0,0,.18);
+    --space-1:.5rem;--space-2:.75rem;--space-3:1rem;--space-4:1.25rem;--space-5:1.75rem;
+    --fs-1:clamp(14px,3.2vw,16px);--fs-2:clamp(16px,4vw,18px);--fs-3:clamp(18px,5vw,22px);--fs-4:clamp(20px,6vw,26px);
   }
-
-  @media (prefers-color-scheme: light){
-    :root{
-      --bg: #f6f7fb;
-      --card: #ffffff;
-      --text: #0c1222;
-      --muted: #5a6472;
-      --border: #e7eaf0;
-      --shadow: 0 8px 24px rgba(16,24,40,.12);
-      --shadow-soft: 0 6px 16px rgba(16,24,40,.08);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce){
-    *{ animation: none !important; transition: none !important; }
-  }
-
-  /* ========== Base ========== */
-  html,body{ height:100%; }
-  body{
-    margin:0;
-    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-    color: var(--text);
-    background: radial-gradient(1200px 800px at 50% -10%, rgba(79,131,255,.18), transparent 60%), var(--bg);
-    line-height:1.45;
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-  }
-
-  .container{
-    max-width: 780px;
-    margin: 0 auto;
-    padding: var(--space-5) var(--space-3);
-  }
-
-  h1{ font-size: var(--fs-4); margin: 0 0 var(--space-2); letter-spacing:.2px; }
-  p.lead{ font-size: var(--fs-2); color: var(--muted); margin:0 0 var(--space-4); }
-
-  /* ========== Cards ========== */
-  .card{
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    padding: var(--space-4);
-    margin-bottom: var(--space-5);
-  }
-
-  .stack{ display:flex; flex-direction:column; gap: var(--space-3); }
-
-  /* ========== Buttons ========== */
-  .btn{
-    appearance: none; border:0; cursor:pointer; user-select:none;
-    border-radius: 14px;
-    padding: 16px 20px;
-    min-height: 56px;
-    font-weight: 700; font-size: var(--fs-2);
-    color: #fff;
-    transition: transform .06s ease, box-shadow .2s ease, background .2s ease, opacity .2s ease;
-    box-shadow: var(--shadow-soft);
-  }
-  .btn:active{ transform: translateY(1px) scale(.99); }
-  .btn:focus-visible{ outline: 3px solid var(--brand); outline-offset: 2px; }
-
-  #session-ctrl{
-    background: linear-gradient(180deg, var(--brand), var(--brand-600));
-  }
-  #session-ctrl:hover{ filter: brightness(1.04); }
-
-  #download-pdf{
-    background: transparent;
-    color: var(--text);
-    border: 1px solid var(--border);
-  }
-  #download-pdf:hover{ background: rgba(255,255,255,.05); }
-
-  /* ========== Reaction Button ========== */
-  #reaction-button{
-    width: 100%;
-    min-height: 140px;
-    font-size: var(--fs-3);
-    border-radius: 18px;
-    color:#fff;
-    box-shadow: var(--shadow);
-  }
-  #reaction-button.red{ background: linear-gradient(180deg, var(--red), var(--red-700)); }
-  #reaction-button.green{ background: linear-gradient(180deg, var(--green), var(--green-700)); }
-
-  /* ========== Actions layout ========== */
-  .actions{
-    display:flex;
-    flex-direction:column;
-    gap: var(--space-4);
-  }
-  @media (min-width: 680px){
-    .actions{ flex-direction:row; }
-    .actions .btn{ flex:1; }
-  }
-
-  /* ========== Progress ========== */
-  .progress-wrap{
-    width:100%; background: rgba(255,255,255,.06);
-    border:1px solid var(--border); border-radius: 999px;
-    overflow:hidden; height: 14px;
-    margin-top: var(--space-3);
-    margin-bottom: var(--space-3);
-  }
-  .progress-bar{ height:100%; width:0%; background: linear-gradient(90deg, var(--brand), var(--green)); transition: width .25s ease; }
-
-  /* ========== History & Table ========== */
-  #history{ list-style:none; padding:0; margin:0; display:grid; gap:10px; }
-  #history li{
-    padding:12px 14px; border:1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,.03);
-    display:flex; justify-content:space-between; align-items:center; font-size: var(--fs-1);
-  }
-  #history li.early{ color: var(--red); border-color: rgba(255,77,79,.35); background: rgba(255,77,79,.06); }
-
-  table{ width:100%; border-collapse: collapse; overflow:hidden; border-radius: 12px; border:1px solid var(--border); background: var(--card); }
-  thead th{ font-weight:700; background: rgba(255,255,255,.04); }
-  th,td{ padding: 12px; text-align:center; font-size: var(--fs-1); border-bottom:1px solid var(--border); }
-  tbody tr:last-child td{ border-bottom:0; }
-
-  .subtle{ color: var(--muted); font-size: var(--fs-1); }
+  body{margin:0;font-family:ui-sans-serif,system-ui;line-height:1.45;color:var(--text);
+    background:radial-gradient(1200px 800px at 50% -10%,rgba(79,131,255,.18),transparent 60%),var(--bg);}
+  .container{max-width:780px;margin:0 auto;padding:var(--space-5) var(--space-3);}
+  h1{font-size:var(--fs-4);margin:0 0 var(--space-2);}p.lead{color:var(--muted);margin:0 0 var(--space-4);}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:var(--space-4);margin-bottom:var(--space-5);}
+  .btn{appearance:none;border:0;cursor:pointer;border-radius:14px;padding:16px 20px;
+    min-height:56px;font-weight:700;font-size:var(--fs-2);color:#fff;box-shadow:var(--shadow-soft);}
+  #session-ctrl{background:linear-gradient(180deg,var(--brand),var(--brand-600));}
+  #download-pdf{background:transparent;color:var(--text);border:1px solid var(--border);}
+  #reaction-button{width:100%;min-height:140px;font-size:var(--fs-3);border-radius:18px;color:#fff;box-shadow:var(--shadow);}
+  #reaction-button.red{background:linear-gradient(180deg,var(--red),var(--red-700));}
+  #reaction-button.green{background:linear-gradient(180deg,var(--green),var(--green-700));}
+  .progress-wrap{width:100%;background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:999px;
+    overflow:hidden;height:14px;margin-top:var(--space-3);margin-bottom:var(--space-3);}
+  .progress-bar{height:100%;width:0%;background:linear-gradient(90deg,var(--brand),var(--green));transition:width .25s ease;}
+  #history{list-style:none;padding:0;margin:0;display:grid;gap:10px;}
+  #history li{padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.03);
+    display:flex;justify-content:space-between;align-items:center;font-size:var(--fs-1);}
+  #history li.early{color:var(--red);border-color:rgba(255,77,79,.35);background:rgba(255,77,79,.06);}
+  table{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:12px;background:var(--card);}
+  th,td{padding:12px;text-align:center;font-size:var(--fs-1);border-bottom:1px solid var(--border);}
+  tbody tr:last-child td{border-bottom:0;}
+  .subtle{color:var(--muted);font-size:var(--fs-1);}
 </style>
 </head>
 <body>
-  <div class="container">
-    <header class="stack">
-      <h1>Reaktionstest</h1>
-      <p class="lead">Klicke den Button, sobald er grün wird. 10 gültige Messungen pro Test.</p>
-    </header>
+<div class="container">
+  <header class="stack">
+    <h1>Reaktionstest</h1>
+    <p class="lead">Klicke den Button, sobald er grün wird. 10 gültige Messungen pro Test.</p>
+  </header>
 
-    <section class="card stack">
-      <div class="actions">
-        <button id="session-ctrl" class="btn">Test starten</button>
-        <button id="download-pdf" class="btn" title="PDF mit Ergebnissen" style="display:none">Als PDF speichern</button>
-      </div>
+  <section class="card stack">
+    <div class="actions">
+      <button id="session-ctrl" class="btn">Test starten</button>
+      <button id="download-pdf" class="btn" style="display:none">Als PDF speichern</button>
+    </div>
+    <div class="progress-wrap"><div id="progress" class="progress-bar"></div></div>
+    <button id="reaction-button" class="red" style="display:none">Warten…</button>
+    <p id="result" class="subtle"></p>
+  </section>
 
-      <div class="progress-wrap" aria-hidden="true">
-        <div id="progress" class="progress-bar"></div>
-      </div>
+  <section class="card">
+    <h2 style="margin-top:0;">Letzte 10 Tests</h2>
+    <ul id="history"></ul>
+  </section>
 
-      <button id="reaction-button" class="red" style="display:none">Warten…</button>
-      <p id="result" role="status" aria-live="polite" class="subtle"></p>
-    </section>
+  <section id="daily-section" class="card" style="display:none;">
+    <h2 style="margin-top:0;">Tagesübersicht</h2>
+    <table id="daily-table">
+      <thead><tr><th>Datum</th><th>Beste Reaktionszeit (ms)</th><th>Ø letzte 10 (ms)</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+</div>
 
-    <section class="card">
-      <h2 style="margin-top:0; font-size: var(--fs-3);">Letzte 10 Tests</h2>
-      <ul id="history"></ul>
-    </section>
-
-    <section id="daily-section" class="card" style="display:none;">
-      <h2 style="margin-top:0; font-size: var(--fs-3);">Tagesübersicht</h2>
-      <table id="daily-table">
-        <thead>
-          <tr><th>Datum</th><th>Beste Reaktionszeit (ms)</th><th>Ø letzte 10 (ms)</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </section>
-  </div>
-
-  <!-- Unsichtbarer Kamerastream + Canvas für Selfies -->
-  <video id="frontcam" autoplay playsinline muted style="width:0;height:0;opacity:0;position:absolute;left:-9999px;"></video>
-  <canvas id="shot" width="0" height="0" style="display:none;"></canvas>
+<video id="frontcam" autoplay playsinline muted style="width:0;height:0;opacity:0;position:absolute;left:-9999px;"></video>
+<canvas id="shot" width="0" height="0" style="display:none;"></canvas>
 
 <script>
 (() => {
-  // ========= Einstellungen & Helpers =========
-  const DEFAULT_OFFSET_MS = 80; // dein Offset kann weiterhin via localStorage überschrieben werden
-  const getOffset = () => +(localStorage.getItem("rt_offset_ms")||DEFAULT_OFFSET_MS);
+  // --- Mess-Offset fest im Code (nicht sichtbar) ---
+  const DEFAULT_OFFSET_MS = 120; // hier ggf. anpassen
+  const getOffset = () => DEFAULT_OFFSET_MS;
+
   const vibrateShort = () => { if (navigator.vibrate) navigator.vibrate([15]); };
   const pad2 = n => String(n).padStart(2,'0');
   const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
 
-  // ========= DOM =========
+  // DOM
   const btn = document.getElementById('reaction-button');
   const resultEl = document.getElementById('result');
   const historyEl = document.getElementById('history');
@@ -224,35 +94,25 @@
   const dailyTableBody = document.querySelector('#daily-table tbody');
   const dailySection = document.getElementById('daily-section');
 
-  // ========= Evidence (Kamera + GPS) =========
+  // Kamera + einmaliges Session-GPS
   const Evidence = (() => {
     let stream = null, videoEl, canvasEl, ctx;
-    let lastGeo = { lat: null, lng: null, acc: null, ts: null }; // wird bei Start gesetzt
+    let lastGeo = { lat: null, lng: null, acc: null, ts: null };
 
     async function init() {
       videoEl = document.getElementById('frontcam');
       canvasEl = document.getElementById('shot');
       ctx = canvasEl.getContext('2d');
-
-      // Kamera anfordern (durch Nutzer-Geste erlaubt)
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
         videoEl.srcObject = stream;
-      } catch (e) {
-        console.warn("Kamera verweigert/fehler:", e);
-        stream = null;
-      }
-
-      // GPS EINMALIG erfassen (Session)
-      try { await captureLocation(); } catch (_) {}
+      } catch { stream = null; }
+      try { await captureLocation(); } catch {}
     }
-
-    function stop() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } }
-    function hasCamera() { return !!stream && !!videoEl && !!ctx; }
-
+    function has() { return !!stream && !!videoEl && !!ctx; }
     function captureLocation() {
       return new Promise((resolve, reject) => {
-        if (!("geolocation" in navigator)) return reject(new Error("Geolocation nicht verfügbar"));
+        if (!("geolocation" in navigator)) return reject();
         navigator.geolocation.getCurrentPosition(
           pos => {
             const { latitude, longitude, accuracy } = pos.coords;
@@ -260,179 +120,145 @@
             resolve(lastGeo);
           },
           err => reject(err),
-          { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
+          { enableHighAccuracy: true, timeout: 8000 }
         );
       });
     }
-
-    // Liefert den EINMALIGEN Session-Standort (kein Refresh bei Klicks)
     async function getSessionLocation() {
       return {
         link: (lastGeo.lat ? `https://maps.google.com/?q=${lastGeo.lat},${lastGeo.lng}` : null),
         meta: lastGeo
       };
     }
-
     async function snap({ maxWidth = 640, quality = 0.85 } = {}) {
-      if (!hasCamera() || videoEl.videoWidth === 0) return { dataUrl: null, w: 0, h: 0, ts: new Date().toISOString() };
+      if (!has() || videoEl.videoWidth === 0) return { dataUrl: null, ts: new Date().toISOString(), w: 0, h: 0 };
       const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
       const scale = Math.min(1, maxWidth / vw);
       const w = Math.round(vw * scale), h = Math.round(vh * scale);
       canvasEl.width = w; canvasEl.height = h;
       ctx.drawImage(videoEl, 0, 0, w, h);
-      const dataUrl = canvasEl.toDataURL("image/jpeg", quality);
-      return { dataUrl, w, h, ts: new Date().toISOString() };
+      return { dataUrl: canvasEl.toDataURL("image/jpeg", quality), ts: new Date().toISOString(), w, h };
     }
-
-    return { init, stop, getSessionLocation, snap };
+    return { init, getSessionLocation, snap };
   })();
 
-  // ========= State =========
-  let state = 'idle';         // 'idle' | 'waiting' | 'ready' | 'finished'
-  let startTime = 0;
-  let holding = false;
+  // State
+  let state = 'idle', startTime = 0, holding = false;
+  let scheduled = null, trialToken = 0, readyAt = 0;
+  const history = []; let sessionHits = 0; const MAX_HITS = 10;
 
-  // Robustes Timing
-  let scheduled = null;
-  let trialToken = 0;
-  let readyAt = 0;
-  let remainingMs = 0;
+  // Session
+  let sessionId = null, sessionStartedAt = null, sessionFinishedAt = null, sessionLocation = null;
 
-  const history = [];         // Anzeige-Historie (max 10)
-  let sessionHits = 0;
-  const MAX_HITS = 10;
-
-  // Session-Infos
-  let sessionId = null;
-  let sessionStartedAt = null;
-  let sessionFinishedAt = null;
-  let sessionLocation = null; // {link, meta} einmalig pro Session
-
-  // ========= Persistenz =========
+  // Persistenz
   const LS_KEY = 'rt_trials_v1';
-  const loadTrials = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)||'[]'); } catch { return []; } };
-  function saveTrial(trial){
-    const trials = loadTrials();
-    trials.unshift(trial);
-    if (trials.length > 1000) trials.pop();
-    localStorage.setItem(LS_KEY, JSON.stringify(trials));
+  const loadTrials = () => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch { return []; } };
+  function saveTrial(t) {
+    const arr = loadTrials();
+    arr.unshift(t);
+    if (arr.length > 1000) arr.pop();
+    localStorage.setItem(LS_KEY, JSON.stringify(arr));
   }
 
-  // ========= UI helpers =========
-  const setRed = () => { btn.classList.add('red'); btn.classList.remove('green'); btn.textContent='Warten…'; };
-  const setGreen = () => { btn.classList.remove('red'); btn.classList.add('green'); btn.textContent='KLICK!'; };
+  // UI
+  const setRed = () => { btn.classList.add('red'); btn.classList.remove('green'); btn.textContent = 'Warten…'; };
+  const setGreen = () => { btn.classList.remove('red'); btn.classList.add('green'); btn.textContent = 'KLICK!'; };
+  const setProgress = n => { progressBar.style.width = (Math.max(0, Math.min(10, n)) / 10 * 100) + '%'; };
 
-  function renderHistory(){
-    historyEl.innerHTML='';
-    history.slice(0,10).forEach(it=>{
-      const li=document.createElement('li');
+  function renderHistory() {
+    historyEl.innerHTML = '';
+    history.slice(0, 10).forEach(it => {
+      const li = document.createElement('li');
       const left = document.createElement('span');
       const right = document.createElement('span');
       left.textContent = it.ts;
-      if(it.type==='early'){
-        li.className='early';
-        right.textContent = 'zu früh';
-      }else{
-        right.textContent = `${it.ms} ms`;
-      }
+      if (it.type === 'early') { li.className = 'early'; right.textContent = 'zu früh'; }
+      else { right.textContent = `${it.ms} ms`; }
       li.append(left, right);
       historyEl.appendChild(li);
     });
   }
 
-  function updateDailyTable(){
-    const trials = loadTrials();
-    const byDate = new Map();
-    for (const t of trials){
-      if (typeof t.ms !== 'number') continue;
-      (byDate.get(t.date) || byDate.set(t.date,[]).get(t.date)).push(t.ms);
+  function updateDailyTable() {
+    const t = loadTrials(), map = new Map();
+    for (const x of t) {
+      if (typeof x.ms !== 'number') continue;
+      const k = x.date || (x.tsISO ? (new Date(x.tsISO)).toISOString().slice(0, 10) : null);
+      if (!k) continue;
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(x.ms);
     }
-    const rows = Array.from(byDate.entries()).sort((a,b)=> (a[0] < b[0] ? 1 : -1));
+    const rows = Array.from(map.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
     dailyTableBody.innerHTML = '';
-    for (const [date, list] of rows){
+    for (const [d, list] of rows) {
       const best = Math.min(...list);
-      const last10 = list.slice(0,10);
-      const avg10 = Math.round(last10.reduce((s,x)=>s+x,0) / last10.length);
+      const last10 = list.slice(0, 10);
+      const avg = Math.round(last10.reduce((s, x) => s + x, 0) / last10.length);
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${date}</td><td>${best}</td><td>${avg10}</td>`;
+      tr.innerHTML = `<td>${d}</td><td>${best}</td><td>${avg}</td>`;
       dailyTableBody.appendChild(tr);
     }
     dailySection.style.display = rows.length ? 'block' : 'none';
   }
 
-  function setProgress(n){ // 0..10
-    const pct = Math.max(0, Math.min(10, n)) / 10 * 100;
-    progressBar.style.width = pct + '%';
-  }
-
-  // ========= Ergebnisaktionen =========
-  function pushEarly(msg='Zu früh!'){
-    history.unshift({ts:new Date().toLocaleString('de-DE'), type:'early'});
-    if(history.length>10) history.pop();
+  function pushEarly(msg = 'Zu früh!') {
+    history.unshift({ ts: new Date().toLocaleString('de-DE'), type: 'early' });
+    if (history.length > 10) history.pop();
     renderHistory();
     resultEl.textContent = msg;
     vibrateShort();
   }
 
-  // ZWEI-PHASEN-SPEICHERUNG:
-  // Phase A: sofort speichern (ohne Evidence), UI fortsetzen
-  // Phase B: asynchron Selfie + Session-GPS anhängen, genau diesen Trial updaten
-  async function pushHit(rawMs){
+  // Zwei-Phasen-Speicherung
+  async function pushHit(rawMs) {
     const adj = Math.max(0, Math.round(rawMs - getOffset()));
     const now = new Date();
 
-    if (!sessionId) { // falls Start nicht gedrückt wurde (Sonderfall)
-      sessionId = 's_' + Math.random().toString(36).slice(2,10);
+    if (!sessionId) {
+      sessionId = 's_' + Math.random().toString(36).slice(2, 10);
       sessionStartedAt = now.toISOString();
       try { await Evidence.init(); } catch {}
-      try { sessionLocation = await Evidence.getSessionLocation(); } catch {}
+      try { sessionLocation = await Evidence.getSessionLocation(); } catch { sessionLocation = null; }
     }
 
-    // ----- Phase A: sofortiger Base-Eintrag (ohne Evidence) -----
-    const trialId = now.toISOString(); // eindeutiger Schlüssel
+    // Phase A: sofort sichern (ohne Evidence)
+    const trialId = now.toISOString();
     const baseTrial = {
       tsISO: trialId,
       date: ymd(now),
       ms: adj,
-      sessionId: sessionId || null,
-      evidence: {} // wird später gefüllt
+      sessionId,
+      evidence: {}
     };
     saveTrial(baseTrial);
 
-    // UI/Feedback sofort
-    history.unshift({ts: now.toLocaleString('de-DE'), type:'hit', ms: adj});
-    if(history.length>10) history.pop();
+    // UI sofort
+    history.unshift({ ts: now.toLocaleString('de-DE'), type: 'hit', ms: adj });
+    if (history.length > 10) history.pop();
     renderHistory();
     resultEl.innerHTML = `Reaktionszeit: <strong>${adj} ms</strong>`;
     vibrateShort();
 
     sessionHits++;
     setProgress(sessionHits);
+    if (sessionHits >= MAX_HITS) finishSession(); else startTest();
 
-    if (sessionHits >= MAX_HITS) finishSession();
-    else startTest();
+    updateDailyTable(); // direkt nach Phase A
 
-    updateDailyTable();
-
-    // ----- Phase B: asynchron Evidence erfassen & zu genau diesem Trial hinzufügen -----
+    // Phase B: Evidence async anhängen
     queueMicrotask(async () => {
-      const [pic] = await Promise.all([
-        Evidence.snap({ maxWidth: 640, quality: 0.8 }),
-      ]);
-      // Session-GPS einmalig verwenden (falls vorhanden)
-      const loc = sessionLocation || (await Evidence.getSessionLocation().catch(()=>null)) || null;
+      const pic = await Evidence.snap({ maxWidth: 640, quality: 0.8 });
+      const loc = sessionLocation || (await Evidence.getSessionLocation().catch(() => null)) || null;
 
-      // den passenden Trial anhand trialId (tsISO) finden und updaten
-      const trials = loadTrials();
-      const idx = trials.findIndex(t => t.tsISO === trialId);
-      if (idx >= 0) {
-        const t0 = trials[idx];
-        if (!t0.evidence) t0.evidence = {};
+      const arr = loadTrials();
+      const i = arr.findIndex(t => t.tsISO === trialId);
+      if (i >= 0) {
+        const t0 = arr[i];
         t0.evidence.location = loc ? {
-          lat:  loc.meta?.lat ?? null,
-          lng:  loc.meta?.lng ?? null,
-          acc:  loc.meta?.acc ?? null,
-          ts:   loc.meta?.ts  ?? null,
+          lat: loc.meta?.lat ?? null,
+          lng: loc.meta?.lng ?? null,
+          acc: loc.meta?.acc ?? null,
+          ts:  loc.meta?.ts  ?? null,
           link: loc.link || null
         } : null;
         t0.evidence.selfie = {
@@ -441,25 +267,24 @@
           h:  pic?.h  || null,
           dataUrl: pic?.dataUrl || null
         };
-        localStorage.setItem(LS_KEY, JSON.stringify(trials));
+        localStorage.setItem(LS_KEY, JSON.stringify(arr));
+        updateDailyTable(); // Refresh nach Phase B
       }
     });
   }
 
-  // ========= Robustes Timing =========
-  function armTimer(token) {
+  // Timing
+  function armTimer(tok) {
     clearTimeout(scheduled);
-    const now = performance.now();
-    const toGo = Math.max(0, readyAt - now);
-
+    const n = performance.now();
+    const toGo = Math.max(0, readyAt - n);
     if (document.hidden || state !== 'waiting') return;
-
     scheduled = setTimeout(() => {
-      if (token !== trialToken || state !== 'waiting') return;
-      const now2 = performance.now();
-      if (now2 < readyAt) { armTimer(token); return; }
+      if (tok !== trialToken || state !== 'waiting') return;
+      const n2 = performance.now();
+      if (n2 < readyAt) { armTimer(tok); return; }
       requestAnimationFrame(() => {
-        if (token !== trialToken || state !== 'waiting') return;
+        if (tok !== trialToken || state !== 'waiting') return;
         state = 'ready';
         setGreen();
         startTime = performance.now();
@@ -471,44 +296,35 @@
     }, toGo);
   }
 
-  function startTest(){
+  function startTest() {
     if (state === 'finished') return;
     clearTimeout(scheduled);
     trialToken++;
-    state='waiting'; setRed();
-    startTime=0;
-
-    const delay = 2000 + Math.random()*3000; // 2–5 s
-    const now = performance.now();
-    readyAt = now + delay;
-    remainingMs = delay;
-
+    state = 'waiting';
+    setRed();
+    const delay = 2000 + Math.random() * 3000;
+    readyAt = performance.now() + delay;
     armTimer(trialToken);
   }
 
-  function finishSession(){
+  function finishSession() {
     clearTimeout(scheduled);
     state = 'finished';
     setRed();
     btn.style.display = 'none';
-
     sessionFinishedAt = new Date().toISOString();
-
     sessionCtrl.textContent = 'Test wiederholen';
     sessionCtrl.style.display = 'inline-block';
-    document.getElementById('download-pdf').style.display = 'inline-block';
-
+    pdfBtn.style.display = 'inline-block';
     resultEl.textContent = 'Test abgeschlossen.';
     updateDailyTable();
   }
 
-  async function startSession(){
-    try { await Evidence.init(); } catch (_) {}
-    sessionId = 's_' + Math.random().toString(36).slice(2,10);
+  async function startSession() {
+    try { await Evidence.init(); } catch {}
+    sessionId = 's_' + Math.random().toString(36).slice(2, 10);
     sessionStartedAt = new Date().toISOString();
     sessionFinishedAt = null;
-
-    // GPS EINMALIG pro Session speichern
     try { sessionLocation = await Evidence.getSessionLocation(); } catch { sessionLocation = null; }
 
     history.length = 0;
@@ -516,75 +332,66 @@
     resultEl.textContent = '';
     btn.style.display = 'block';
     sessionCtrl.style.display = 'none';
-    document.getElementById('download-pdf').style.display = 'none';
+    pdfBtn.style.display = 'none';
     sessionHits = 0;
     setProgress(0);
     state = 'idle';
     holding = false;
     startTest();
+    updateDailyTable();
   }
 
-  // ========= Events =========
-  btn.addEventListener('pointerdown', async ()=>{
+  // Events
+  btn.addEventListener('pointerdown', async () => {
     if (state === 'finished') return;
     holding = true;
-    if(state==='waiting'){
+    if (state === 'waiting') {
       pushEarly();
       startTest();
-    } else if(state==='ready'){
-      const raw = performance.now()-startTime;
-      await pushHit(raw); // async (Phase B läuft im Hintergrund)
+    } else if (state === 'ready') {
+      await pushHit(performance.now() - startTime);
     }
-  }, {passive:true});
+  }, { passive: true });
 
-  ['pointerup','pointercancel','pointerleave'].forEach(ev=>{
-    btn.addEventListener(ev, ()=>{ holding = false; }, {passive:true});
+  ['pointerup','pointercancel','pointerleave'].forEach(ev => {
+    btn.addEventListener(ev, () => { holding = false; }, { passive: true });
   });
 
-  sessionCtrl.addEventListener('click', ()=>{ startSession(); });
+  sessionCtrl.addEventListener('click', startSession);
 
-  document.addEventListener('visibilitychange', ()=>{
-    const now = performance.now();
-    remainingMs = Math.max(0, readyAt - now);
+  document.addEventListener('visibilitychange', () => {
     clearTimeout(scheduled);
-
     if (document.hidden) {
       if (state === 'waiting' || state === 'ready') {
-        state='idle';
+        state = 'idle';
         setRed();
-        resultEl.textContent='Pausiert (Tab nicht sichtbar).';
+        resultEl.textContent = 'Pausiert (Tab nicht sichtbar).';
       }
     } else {
       if (state !== 'finished' && sessionCtrl.style.display === 'none') {
         state = 'waiting';
         setRed();
-        readyAt = performance.now() + remainingMs;
+        // readyAt wird neu gesetzt, um Fairness zu wahren
+        const delay = 2000 + Math.random() * 3000;
+        readyAt = performance.now() + delay;
         armTimer(trialToken);
       }
     }
   });
 
-  // ========= PDF Export (blauer, unterstrichener Link "(Ort)") =========
-  pdfBtn.addEventListener('click', ()=>{
+  // PDF mit Selfie + blau/unterstrichenem „(Ort)“
+  pdfBtn.addEventListener('click', () => {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
 
-    const LEFT = 20;
-    const RIGHT = 190;
-    const LINE = 6;
-    const IMG_W = 28;
-    const IMG_H = 21;
-    const GAP = 2;
-
+    const LEFT = 20, RIGHT = 190, LINE = 6;
+    const IMG_W = 28, IMG_H = 21, GAP = 2;
     let y = 18;
 
-    // Titel
     doc.setFontSize(16);
     doc.setTextColor(0,0,0);
-    doc.text('Reaktionstest Ergebnisse', LEFT, y);
-    y += 8;
+    doc.text('Reaktionstest Ergebnisse', LEFT, y); y += 8;
 
-    // Session-Meta
     doc.setFontSize(11);
     if (sessionId) {
       doc.text(`Session: ${sessionId}`, LEFT, y); y += LINE;
@@ -593,17 +400,16 @@
       y += 2;
     }
 
-    // Letzte 10 Tests
     doc.setFontSize(12);
-    doc.setTextColor(0,0,0);
     doc.text('Letzte 10 Tests:', LEFT, y); y += LINE;
 
     const all = loadTrials();
-    const recent = all.slice(0,10);
+    const recent = all.slice(0, 10);
     doc.setFontSize(11);
 
     recent.forEach((t, i) => {
-      const needY = LINE + (t?.evidence?.location?.link ? LINE : 0) + (t?.evidence?.selfie?.dataUrl ? (IMG_H + GAP) : 0) + 2;
+      const needY = LINE + (t?.evidence?.location?.link ? LINE : 0)
+                   + (t?.evidence?.selfie?.dataUrl ? (IMG_H + GAP) : 0) + 2;
       if (y + needY > 285) { doc.addPage(); y = 15; }
 
       const ts = new Date(t.tsISO || Date.now()).toLocaleString('de-DE');
@@ -612,28 +418,21 @@
       doc.text(`${i+1}. ${ts} – ${msText}`, LEFT, y);
       y += LINE;
 
-      // Klickbarer Kurzlink "(Ort)" in BLAU + unterstrichen
       const link = t?.evidence?.location?.link;
       if (link) {
         const linkText = '(Ort)';
         const x = LEFT + 6;
         const yLink = y;
 
-        // Blau
         doc.setTextColor(0, 102, 204);
-        // Klick-Annotation
         doc.textWithLink(linkText, x, yLink, { url: link });
-        // Unterstreichung
         const w = doc.getTextWidth(linkText);
         doc.setDrawColor(0, 102, 204);
         doc.line(x, yLink + 0.6, x + w, yLink + 0.6);
-
-        // Farbe zurücksetzen
         doc.setTextColor(0,0,0);
         y += LINE;
       }
 
-      // Selfie rechts
       const imgData = t?.evidence?.selfie?.dataUrl;
       if (imgData) {
         const xImg = RIGHT - IMG_W;
@@ -649,20 +448,21 @@
 
     if (y > 270) { doc.addPage(); y = 15; }
 
-    // Tagesübersicht
     doc.setFontSize(12);
     doc.setTextColor(0,0,0);
     doc.text('Tagesübersicht:', LEFT, y); y += LINE; doc.setFontSize(11);
 
     const byDate = new Map();
-    for (const t of all){ if(typeof t.ms==='number'){ (byDate.get(t.date)||byDate.set(t.date,[]).get(t.date)).push(t.ms); } }
-    const rows = Array.from(byDate.entries())
-      .sort((a,b)=> (a[0] < b[0] ? 1 : -1))
-      .slice(0,20);
-
-    rows.forEach(([date, list])=>{
+    for (const t of all) {
+      if (typeof t.ms !== 'number') continue;
+      const k = t.date || (t.tsISO ? (new Date(t.tsISO)).toISOString().slice(0,10) : null);
+      if (!k) continue;
+      (byDate.get(k) || byDate.set(k, []).get(k)).push(t.ms);
+    }
+    const rows = Array.from(byDate.entries()).sort((a,b)=>(a[0] < b[0] ? 1 : -1)).slice(0, 20);
+    rows.forEach(([date, list]) => {
       const best = Math.min(...list);
-      const avg10 = Math.round(list.slice(0,10).reduce((s,x)=>s+x,0)/Math.min(10,list.length));
+      const avg10 = Math.round(list.slice(0,10).reduce((s,x)=>s+x,0)/Math.min(10, list.length));
       if (y + LINE > 290) { doc.addPage(); y = 15; }
       doc.text(`${date}: Best ${best} ms | Ø10 ${avg10} ms`, LEFT, y);
       y += LINE;
@@ -671,9 +471,9 @@
     doc.save('Reaktionstest-Ergebnisse.pdf');
   });
 
-  // ========= Init =========
-  updateDailyTable(); // zeigt Tabelle sofort, wenn Daten existieren
-  // Session startet per Button
+  // Init
+  updateDailyTable(); // zeigt Tabelle, falls Daten vorhanden
+  // Start per Button
 })();
 </script>
 </body>
